@@ -73,7 +73,7 @@ class ContactBase(BaseModel):
     email: Optional[EmailStr] = None
     phone: Optional[str] = None
     source: str = "manual"
-    metadata: Dict[str, Any] = {}
+    custom_custom_metadata: Dict[str, Any] = {}
 
 class ContactCreate(ContactBase):
     workspace_id: UUID

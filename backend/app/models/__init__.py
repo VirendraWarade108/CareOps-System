@@ -110,7 +110,7 @@ class Contact(Base):
     email = Column(String(255), index=True)
     phone = Column(String(50))
     source = Column(String(100), default="manual")  # 'contact_form', 'booking', 'manual'
-    metadata = Column(JSON, default={})
+    custom_custom_metadata = Column(JSON, default={})
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
     
@@ -154,7 +154,7 @@ class Message(Base):
     content = Column(Text, nullable=False)
     channel = Column(String(50), default="email")  # 'email', 'sms', 'internal'
     is_automated = Column(Boolean, default=False)
-    metadata = Column(JSON, default={})
+    custom_custom_metadata = Column(JSON, default={})
     sent_at = Column(DateTime(timezone=True), server_default=func.now())
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     
@@ -373,7 +373,7 @@ class ActivityLog(Base):
     action = Column(String(100), nullable=False)
     entity_type = Column(String(50))
     entity_id = Column(UUID(as_uuid=True))
-    metadata = Column(JSON, default={})
+    custom_custom_metadata = Column(JSON, default={})
     created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
     
     # Relationships

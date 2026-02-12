@@ -224,12 +224,16 @@ def activate_workspace(
 @app.patch("/api/workspaces/{workspace_id}/onboarding-step")
 def update_onboarding_step(
     workspace_id: str,
-    step: int,
+    request_data: dict,  # ✅ FIX: Accept JSON body
     workspace: models.Workspace = Depends(get_current_workspace),
     db: Session = Depends(get_db)
 ):
     """Update onboarding step"""
-    workspace.onboarding_step = step
+    step = request_data.get('step')
+    if step is None:
+        raise HTTPException(status_code=400, detail="Step value required")
+    
+    workspace.onboarding_step = int(step)
     db.commit()
     db.refresh(workspace)
     return workspace
@@ -951,4 +955,4 @@ def health_check():
 
 
 if __name__ == "__main__":
-    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
+    uvicorn.run("app.main:app", host="0.0.0.0", port=8000, reload=True)

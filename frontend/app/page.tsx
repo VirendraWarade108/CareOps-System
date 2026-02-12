@@ -29,13 +29,13 @@ export default function Home() {
             </div>
             <div className="flex items-center gap-4">
               <Link 
-                href="/login"
+                href="/auth/login"
                 className="text-gray-700 hover:text-gray-900 px-4 py-2"
               >
                 Log in
               </Link>
               <Link 
-                href="/register"
+                href="/auth/register"
                 className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 transition"
               >
                 Get Started
@@ -58,7 +58,7 @@ export default function Home() {
           </p>
           <div className="flex justify-center gap-4">
             <Link 
-              href="/register"
+              href="/auth/register"
               className="bg-blue-600 text-white px-8 py-4 rounded-lg text-lg font-semibold hover:bg-blue-700 transition shadow-lg hover:shadow-xl"
             >
               Start Free Trial
@@ -97,7 +97,7 @@ export default function Home() {
             Join hundreds of service businesses already using CareOps
           </p>
           <Link 
-            href="/register"
+            href="/auth/register"
             className="bg-white text-blue-600 px-8 py-4 rounded-lg text-lg font-semibold hover:bg-gray-50 transition inline-block"
           >
             Get Started Free
