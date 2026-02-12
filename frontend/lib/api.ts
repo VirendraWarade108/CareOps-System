@@ -198,4 +198,14 @@ export const publicApi = {
     const response = await axios.post(`${API_URL}/api/public/workspaces/${slug}/bookings`, data);
     return response.data;
   },
+
+  update: async (workspaceId: string, data: any) => {
+    const response = await api.patch(`/api/workspaces/${workspaceId}`, data);
+    return response.data;
+  },
+  
+  getIntegrations: async (workspaceId: string) => {
+    const response = await api.get(`/api/workspaces/${workspaceId}/integrations`);
+    return response.data;
+  },
 };

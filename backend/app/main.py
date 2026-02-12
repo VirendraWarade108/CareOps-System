@@ -473,6 +473,28 @@ def get_bookings(
     
     return bookings
 
+@app.patch("/api/bookings/{booking_id}")
+def update_booking(
+    booking_id: str,
+    update: schemas.BookingUpdate,
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Update booking status/details"""
+    booking = db.query(models.Booking).filter(
+        models.Booking.id == booking_id
+    ).first()
+    
+    if not booking:
+        raise HTTPException(status_code=404, detail="Booking not found")
+    
+    update_data = update.dict(exclude_unset=True)
+    for field, value in update_data.items():
+        setattr(booking, field, value)
+    
+    db.commit()
+    db.refresh(booking)
+    return booking
 
 # ============== POST-BOOKING FORM ROUTES ==============
 @app.post("/api/workspaces/{workspace_id}/post-booking-forms")
@@ -546,11 +568,31 @@ def list_conversations(
     workspace: models.Workspace = Depends(get_current_workspace),
     db: Session = Depends(get_db)
 ):
-    """List all conversations"""
+    """List all conversations with contact info"""
     conversations = db.query(models.Conversation).filter(
         models.Conversation.workspace_id == workspace_id
     ).order_by(models.Conversation.last_message_at.desc()).all()
-    return conversations
+    
+    result = []
+    for conv in conversations:
+        contact = db.query(models.Contact).filter(
+            models.Contact.id == conv.contact_id
+        ).first()
+        conv_dict = {
+            "id": str(conv.id),
+            "workspace_id": str(conv.workspace_id),
+            "contact_id": str(conv.contact_id),
+            "status": conv.status,
+            "last_message_at": conv.last_message_at.isoformat() if conv.last_message_at else None,
+            "automation_paused": conv.automation_paused,
+            "created_at": conv.created_at.isoformat() if conv.created_at else None,
+            "contact": {
+                "name": contact.name if contact else "Unknown",
+                "email": contact.email if contact else ""
+            } if contact else None
+        }
+        result.append(conv_dict)
+    return result
 
 @app.get("/api/conversations/{conversation_id}/messages")
 def get_messages(
