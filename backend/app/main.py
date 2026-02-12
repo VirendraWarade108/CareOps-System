@@ -5,11 +5,15 @@ from sqlalchemy.orm import Session
 from typing import List, Optional
 from datetime import timedelta, datetime
 import uvicorn
+import atexit
 
 from app.database import get_db, Base, engine
 from app.config import settings
 from app import models, schemas
 from app.utils.security import verify_password, get_password_hash, create_access_token, decode_access_token
+from app.services.email_service import get_email_service
+from app.services.automation_service import get_automation_service
+from app.scheduler import start_scheduler, stop_scheduler
 
 # Create all tables
 Base.metadata.create_all(bind=engine)
@@ -30,6 +34,24 @@ app.add_middleware(
 )
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="api/auth/login")
+
+
+# ============== STARTUP/SHUTDOWN ==============
+@app.on_event("startup")
+async def startup_event():
+    """Start background scheduler on app startup"""
+    start_scheduler()
+
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    """Stop background scheduler on app shutdown"""
+    stop_scheduler()
+
+
+# Ensure scheduler stops on exit
+atexit.register(stop_scheduler)
+
 
 # ============== DEPENDENCIES ==============
 async def get_current_user(
@@ -59,6 +81,7 @@ async def get_current_user(
         )
     
     return user
+
 
 async def get_current_workspace(
     workspace_id: str,
@@ -116,6 +139,7 @@ def register(user: schemas.UserCreate, db: Session = Depends(get_db)):
         "user": db_user
     }
 
+
 @app.post("/api/auth/login", response_model=schemas.Token)
 def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
     """Login user"""
@@ -134,6 +158,7 @@ def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depend
         "token_type": "bearer",
         "user": user
     }
+
 
 @app.get("/api/auth/me", response_model=schemas.UserResponse)
 def get_me(current_user: models.User = Depends(get_current_user)):
@@ -172,6 +197,7 @@ def create_workspace(
     
     return db_workspace
 
+
 @app.get("/api/workspaces", response_model=List[schemas.WorkspaceResponse])
 def get_workspaces(
     current_user: models.User = Depends(get_current_user),
@@ -192,6 +218,7 @@ def get_workspaces(
     
     return owned + member_workspaces
 
+
 @app.get("/api/workspaces/{workspace_id}", response_model=schemas.WorkspaceResponse)
 def get_workspace(
     workspace_id: str,
@@ -208,6 +235,24 @@ def get_workspace(
     
     return workspace
 
+
+@app.patch("/api/workspaces/{workspace_id}")
+def update_workspace(
+    workspace_id: str,
+    update_data: dict,
+    workspace: models.Workspace = Depends(get_current_workspace),
+    db: Session = Depends(get_db)
+):
+    """Update workspace settings"""
+    for key, value in update_data.items():
+        if hasattr(workspace, key) and key not in ['id', 'slug', 'owner_id', 'created_at']:
+            setattr(workspace, key, value)
+    
+    db.commit()
+    db.refresh(workspace)
+    return workspace
+
+
 @app.patch("/api/workspaces/{workspace_id}/activate")
 def activate_workspace(
     workspace_id: str,
@@ -221,10 +266,11 @@ def activate_workspace(
     db.refresh(workspace)
     return {"message": "Workspace activated successfully", "workspace": workspace}
 
+
 @app.patch("/api/workspaces/{workspace_id}/onboarding-step")
 def update_onboarding_step(
     workspace_id: str,
-    request_data: dict,  # ✅ FIX: Accept JSON body
+    request_data: dict,
     workspace: models.Workspace = Depends(get_current_workspace),
     db: Session = Depends(get_db)
 ):
@@ -237,6 +283,145 @@ def update_onboarding_step(
     db.commit()
     db.refresh(workspace)
     return workspace
+
+
+# ============== STAFF MANAGEMENT ROUTES ==============
+@app.post("/api/workspaces/{workspace_id}/staff")
+def invite_staff(
+    workspace_id: str,
+    invite_data: dict,
+    workspace: models.Workspace = Depends(get_current_workspace),
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Invite staff member to workspace"""
+    # Only owner can invite
+    if workspace.owner_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Only workspace owner can invite staff")
+    
+    email = invite_data.get('email')
+    permissions = invite_data.get('permissions', {
+        'inbox': True,
+        'bookings': True,
+        'forms': True,
+        'inventory': False
+    })
+    
+    # Check if user exists
+    staff_user = db.query(models.User).filter(models.User.email == email).first()
+    
+    if not staff_user:
+        # Create staff user with temporary password
+        temp_password = get_password_hash("changeme123")
+        staff_user = models.User(
+            email=email,
+            password_hash=temp_password,
+            full_name=invite_data.get('name', ''),
+            role='staff'
+        )
+        db.add(staff_user)
+        db.flush()
+    
+    # Check if already member
+    existing = db.query(models.WorkspaceMember).filter(
+        models.WorkspaceMember.workspace_id == workspace_id,
+        models.WorkspaceMember.user_id == staff_user.id
+    ).first()
+    
+    if existing:
+        raise HTTPException(status_code=400, detail="User is already a member")
+    
+    # Create membership
+    member = models.WorkspaceMember(
+        workspace_id=workspace_id,
+        user_id=staff_user.id,
+        permissions=permissions
+    )
+    db.add(member)
+    db.commit()
+    db.refresh(member)
+    
+    return {"message": "Staff member invited successfully", "member": member}
+
+
+@app.get("/api/workspaces/{workspace_id}/staff")
+def list_staff(
+    workspace_id: str,
+    workspace: models.Workspace = Depends(get_current_workspace),
+    db: Session = Depends(get_db)
+):
+    """List all staff members"""
+    members = db.query(models.WorkspaceMember).filter(
+        models.WorkspaceMember.workspace_id == workspace_id
+    ).all()
+    
+    result = []
+    for member in members:
+        user = db.query(models.User).filter(models.User.id == member.user_id).first()
+        result.append({
+            "id": str(member.id),
+            "user_id": str(member.user_id),
+            "email": user.email if user else None,
+            "full_name": user.full_name if user else None,
+            "permissions": member.permissions,
+            "created_at": member.created_at.isoformat()
+        })
+    
+    return result
+
+
+@app.patch("/api/workspaces/{workspace_id}/staff/{member_id}")
+def update_staff_permissions(
+    workspace_id: str,
+    member_id: str,
+    update_data: dict,
+    workspace: models.Workspace = Depends(get_current_workspace),
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Update staff member permissions"""
+    if workspace.owner_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Only workspace owner can update permissions")
+    
+    member = db.query(models.WorkspaceMember).filter(
+        models.WorkspaceMember.id == member_id,
+        models.WorkspaceMember.workspace_id == workspace_id
+    ).first()
+    
+    if not member:
+        raise HTTPException(status_code=404, detail="Staff member not found")
+    
+    member.permissions = update_data.get('permissions', member.permissions)
+    db.commit()
+    db.refresh(member)
+    
+    return member
+
+
+@app.delete("/api/workspaces/{workspace_id}/staff/{member_id}")
+def remove_staff(
+    workspace_id: str,
+    member_id: str,
+    workspace: models.Workspace = Depends(get_current_workspace),
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Remove staff member from workspace"""
+    if workspace.owner_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Only workspace owner can remove staff")
+    
+    member = db.query(models.WorkspaceMember).filter(
+        models.WorkspaceMember.id == member_id,
+        models.WorkspaceMember.workspace_id == workspace_id
+    ).first()
+    
+    if not member:
+        raise HTTPException(status_code=404, detail="Staff member not found")
+    
+    db.delete(member)
+    db.commit()
+    
+    return {"message": "Staff member removed successfully"}
 
 
 # ============== INTEGRATION ROUTES ==============
@@ -258,6 +443,7 @@ def create_integration(
     db.commit()
     db.refresh(db_integration)
     return db_integration
+
 
 @app.get("/api/workspaces/{workspace_id}/integrations")
 def list_integrations(
@@ -283,10 +469,28 @@ def create_contact(
     """Create new contact"""
     db_contact = models.Contact(**contact.dict())
     db.add(db_contact)
+    db.flush()
+    
+    # Create conversation
+    conversation = models.Conversation(
+        workspace_id=workspace_id,
+        contact_id=db_contact.id,
+        status="open"
+    )
+    db.add(conversation)
+    
     db.commit()
     db.refresh(db_contact)
     
+    # Send welcome email via automation
+    try:
+        email_service = get_email_service(workspace_id, db)
+        email_service.send_welcome_email(db_contact)
+    except Exception as e:
+        print(f"⚠️ Failed to send welcome email: {str(e)}")
+    
     return db_contact
+
 
 @app.get("/api/workspaces/{workspace_id}/contacts", response_model=List[schemas.ContactResponse])
 def get_contacts(
@@ -326,6 +530,7 @@ def create_contact_form(
     db.refresh(db_form)
     return db_form
 
+
 @app.get("/api/workspaces/{workspace_id}/contact-forms")
 def list_contact_forms(
     workspace_id: str,
@@ -361,6 +566,7 @@ def create_service(
     db.refresh(db_service)
     return db_service
 
+
 @app.get("/api/workspaces/{workspace_id}/services")
 def list_services(
     workspace_id: str,
@@ -394,6 +600,7 @@ def create_availability(
     db.commit()
     db.refresh(db_availability)
     return db_availability
+
 
 @app.get("/api/workspaces/{workspace_id}/services/{service_id}/availability")
 def list_availability(
@@ -462,7 +669,15 @@ def create_booking(
     db.commit()
     db.refresh(db_booking)
     
+    # Send confirmation email
+    try:
+        email_service = get_email_service(workspace_id, db)
+        email_service.send_booking_confirmation(db_booking)
+    except Exception as e:
+        print(f"⚠️ Failed to send booking confirmation: {str(e)}")
+    
     return db_booking
+
 
 @app.get("/api/workspaces/{workspace_id}/bookings", response_model=List[schemas.BookingResponse])
 def get_bookings(
@@ -476,6 +691,7 @@ def get_bookings(
     ).order_by(models.Booking.scheduled_at.desc()).all()
     
     return bookings
+
 
 @app.patch("/api/bookings/{booking_id}")
 def update_booking(
@@ -500,6 +716,7 @@ def update_booking(
     db.refresh(booking)
     return booking
 
+
 # ============== POST-BOOKING FORM ROUTES ==============
 @app.post("/api/workspaces/{workspace_id}/post-booking-forms")
 def create_post_booking_form(
@@ -521,6 +738,7 @@ def create_post_booking_form(
     db.refresh(db_form)
     return db_form
 
+
 @app.get("/api/workspaces/{workspace_id}/form-submissions")
 def list_form_submissions(
     workspace_id: str,
@@ -541,10 +759,11 @@ def list_form_submissions(
     submissions = query.all()
     return submissions
 
+
 @app.patch("/api/form-submissions/{submission_id}")
 def update_form_submission(
     submission_id: str,
-    status: str,
+    update_data: dict,
     current_user: models.User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
@@ -556,9 +775,11 @@ def update_form_submission(
     if not submission:
         raise HTTPException(status_code=404, detail="Submission not found")
     
-    submission.status = status
-    if status == "completed":
-        submission.submitted_at = datetime.now()
+    status_value = update_data.get('status')
+    if status_value:
+        submission.status = status_value
+        if status_value == "completed":
+            submission.submitted_at = datetime.now()
     
     db.commit()
     db.refresh(submission)
@@ -598,6 +819,7 @@ def list_conversations(
         result.append(conv_dict)
     return result
 
+
 @app.get("/api/conversations/{conversation_id}/messages")
 def get_messages(
     conversation_id: str,
@@ -609,6 +831,7 @@ def get_messages(
         models.Message.conversation_id == conversation_id
     ).order_by(models.Message.sent_at.asc()).all()
     return messages
+
 
 @app.post("/api/conversations/{conversation_id}/messages")
 def send_message(
@@ -634,8 +857,9 @@ def send_message(
     )
     db.add(db_message)
     
-    # Update conversation last message time
+    # Update conversation last message time and pause automation
     conversation.last_message_at = datetime.now()
+    conversation.automation_paused = True
     
     db.commit()
     db.refresh(db_message)
@@ -666,6 +890,7 @@ def create_inventory_item(
     db.refresh(db_item)
     return db_item
 
+
 @app.get("/api/workspaces/{workspace_id}/inventory")
 def list_inventory(
     workspace_id: str,
@@ -677,6 +902,7 @@ def list_inventory(
         models.InventoryItem.workspace_id == workspace_id
     ).all()
     return items
+
 
 @app.patch("/api/inventory/{item_id}")
 def update_inventory(
@@ -700,6 +926,7 @@ def update_inventory(
     db.commit()
     db.refresh(item)
     return item
+
 
 @app.post("/api/inventory/{item_id}/usage")
 def record_usage(
@@ -730,15 +957,31 @@ def record_usage(
     
     # Create alert if low stock
     if item.quantity <= item.low_stock_threshold:
-        alert = models.Alert(
-            workspace_id=item.workspace_id,
-            type="low_stock",
-            priority="high",
-            title=f"Low Stock: {item.name}",
-            message=f"{item.name} is running low ({item.quantity} {item.unit} remaining)",
-            link=f"/inventory/{item_id}"
-        )
-        db.add(alert)
+        # Check if alert already exists
+        existing_alert = db.query(models.Alert).filter(
+            models.Alert.workspace_id == item.workspace_id,
+            models.Alert.type == "low_stock",
+            models.Alert.link == f"/inventory/{item_id}",
+            models.Alert.is_read == False
+        ).first()
+        
+        if not existing_alert:
+            alert = models.Alert(
+                workspace_id=item.workspace_id,
+                type="low_stock",
+                priority="high",
+                title=f"Low Stock: {item.name}",
+                message=f"{item.name} is running low ({item.quantity} {item.unit} remaining)",
+                link=f"/inventory/{item_id}"
+            )
+            db.add(alert)
+            
+            # Send email alert
+            try:
+                email_service = get_email_service(item.workspace_id, db)
+                email_service.send_low_stock_alert(item)
+            except Exception as e:
+                print(f"⚠️ Failed to send low stock email: {str(e)}")
     
     db.commit()
     db.refresh(db_usage)
@@ -763,6 +1006,7 @@ def get_alerts(
     
     alerts = query.order_by(models.Alert.created_at.desc()).all()
     return alerts
+
 
 @app.patch("/api/alerts/{alert_id}/read")
 def mark_alert_read(
@@ -865,6 +1109,7 @@ def get_public_workspace(slug: str, db: Session = Depends(get_db)):
         "timezone": workspace.timezone
     }
 
+
 @app.get("/api/public/workspaces/{slug}/services")
 def get_public_services(slug: str, db: Session = Depends(get_db)):
     """Get public service types"""
@@ -882,6 +1127,7 @@ def get_public_services(slug: str, db: Session = Depends(get_db)):
     ).all()
     
     return services
+
 
 @app.post("/api/public/workspaces/{slug}/bookings")
 def create_public_booking(
@@ -914,6 +1160,14 @@ def create_public_booking(
         )
         db.add(contact)
         db.flush()
+        
+        # Create conversation for new contact
+        conversation = models.Conversation(
+            workspace_id=workspace.id,
+            contact_id=contact.id,
+            status="open"
+        )
+        db.add(conversation)
     
     # Get service
     service = db.query(models.ServiceType).filter(
@@ -941,7 +1195,94 @@ def create_public_booking(
     db.commit()
     db.refresh(db_booking)
     
+    # Send confirmation email
+    try:
+        email_service = get_email_service(workspace.id, db)
+        email_service.send_booking_confirmation(db_booking)
+    except Exception as e:
+        print(f"⚠️ Failed to send booking confirmation: {str(e)}")
+    
     return {"message": "Booking created successfully", "booking_id": str(db_booking.id)}
+
+
+@app.post("/api/public/workspaces/{slug}/contact")
+def submit_public_contact_form(
+    slug: str,
+    form_data: dict,
+    db: Session = Depends(get_db)
+):
+    """Submit contact form from public page"""
+    workspace = db.query(models.Workspace).filter(
+        models.Workspace.slug == slug,
+        models.Workspace.is_active == True
+    ).first()
+    
+    if not workspace:
+        raise HTTPException(status_code=404, detail="Workspace not found")
+    
+    # Extract contact info
+    name = form_data.get('name')
+    email = form_data.get('email')
+    phone = form_data.get('phone')
+    message = form_data.get('message')
+    
+    if not name or not email:
+        raise HTTPException(status_code=400, detail="Name and email are required")
+    
+    # Check if contact exists
+    contact = db.query(models.Contact).filter(
+        models.Contact.workspace_id == workspace.id,
+        models.Contact.email == email
+    ).first()
+    
+    if not contact:
+        contact = models.Contact(
+            workspace_id=workspace.id,
+            name=name,
+            email=email,
+            phone=phone,
+            source="contact_form"
+        )
+        db.add(contact)
+        db.flush()
+    
+    # Create or get conversation
+    conversation = db.query(models.Conversation).filter(
+        models.Conversation.workspace_id == workspace.id,
+        models.Conversation.contact_id == contact.id
+    ).first()
+    
+    if not conversation:
+        conversation = models.Conversation(
+            workspace_id=workspace.id,
+            contact_id=contact.id,
+            status="open"
+        )
+        db.add(conversation)
+        db.flush()
+    
+    # Add message if provided
+    if message:
+        db_message = models.Message(
+            conversation_id=conversation.id,
+            sender_type="contact",
+            sender_id=contact.id,
+            content=message,
+            channel="email"
+        )
+        db.add(db_message)
+        conversation.last_message_at = datetime.now()
+    
+    db.commit()
+    
+    # Send welcome email
+    try:
+        email_service = get_email_service(workspace.id, db)
+        email_service.send_welcome_email(contact)
+    except Exception as e:
+        print(f"⚠️ Failed to send welcome email: {str(e)}")
+    
+    return {"message": "Thank you! We'll be in touch soon.", "contact_id": str(contact.id)}
 
 
 # ============== HEALTH CHECK ==============
@@ -949,9 +1290,10 @@ def create_public_booking(
 def root():
     return {"message": "CareOps API is running", "version": "1.0.0"}
 
+
 @app.get("/health")
 def health_check():
-    return {"status": "healthy"}
+    return {"status": "healthy", "scheduler": "active"}
 
 
 if __name__ == "__main__":

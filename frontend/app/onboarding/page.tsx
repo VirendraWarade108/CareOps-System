@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { api } from '@/lib/api';
 
@@ -10,6 +10,7 @@ export default function OnboardingPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [workspaceId, setWorkspaceId] = useState('');
   const [services, setServices] = useState<any[]>([]);
+  const [error, setError] = useState('');
 
   // Step 1: Workspace data
   const [workspace, setWorkspace] = useState({
@@ -33,6 +34,7 @@ export default function OnboardingPage() {
   // Step 3: Contact Form
   const [contactForm, setContactForm] = useState({
     name: 'Contact Form',
+    welcome_message: 'Thank you for contacting us! We will get back to you soon.',
     fields: [
       { type: 'text', label: 'Name', name: 'name', required: true },
       { type: 'email', label: 'Email', name: 'email', required: true },
@@ -46,39 +48,74 @@ export default function OnboardingPage() {
     name: '',
     description: '',
     duration_minutes: 60,
-    location: '',
+    location: workspace.address || '',
     color: '#3B82F6'
   });
 
-  // Step 5: Availability (per service)
-  const [availability, setAvailability] = useState<any[]>([]);
+  // Step 5: Availability
+  const [selectedServiceForAvailability, setSelectedServiceForAvailability] = useState('');
+  const [availability, setAvailability] = useState([
+    { day: 1, enabled: true, start: '09:00', end: '17:00' },  // Monday
+    { day: 2, enabled: true, start: '09:00', end: '17:00' },  // Tuesday
+    { day: 3, enabled: true, start: '09:00', end: '17:00' },  // Wednesday
+    { day: 4, enabled: true, start: '09:00', end: '17:00' },  // Thursday
+    { day: 5, enabled: true, start: '09:00', end: '17:00' },  // Friday
+    { day: 6, enabled: false, start: '09:00', end: '17:00' }, // Saturday
+    { day: 0, enabled: false, start: '09:00', end: '17:00' }  // Sunday
+  ]);
 
   // Step 6: Post-Booking Forms
-  const [postBookingForms, setPostBookingForms] = useState<any[]>([]);
+  const [selectedServiceForForms, setSelectedServiceForForms] = useState('');
+  const [postBookingForm, setPostBookingForm] = useState({
+    name: 'Intake Form',
+    description: 'Please complete this form before your appointment',
+    fields: [
+      { type: 'text', label: 'Emergency Contact Name', name: 'emergency_contact_name', required: true },
+      { type: 'phone', label: 'Emergency Contact Phone', name: 'emergency_contact_phone', required: true },
+      { type: 'textarea', label: 'Medical History', name: 'medical_history', required: false },
+      { type: 'textarea', label: 'Current Medications', name: 'current_medications', required: false },
+      { type: 'textarea', label: 'Allergies', name: 'allergies', required: false }
+    ]
+  });
 
   // Step 7: Inventory
   const [inventory, setInventory] = useState<any[]>([]);
   const [newInventoryItem, setNewInventoryItem] = useState({
     name: '',
+    description: '',
     quantity: 0,
     low_stock_threshold: 10,
     unit: 'pieces',
     vendor_email: ''
   });
 
-  const nextStep = () => setCurrentStep(Math.min(8, currentStep + 1));
-  const prevStep = () => setCurrentStep(Math.max(1, currentStep - 1));
+  const nextStep = () => {
+    setError('');
+    setCurrentStep(Math.min(8, currentStep + 1));
+  };
+  
+  const prevStep = () => {
+    setError('');
+    setCurrentStep(Math.max(1, currentStep - 1));
+  };
 
   // Step 1: Create Workspace
   const handleStep1 = async () => {
+    if (!workspace.business_name) {
+      setError('Business name is required');
+      return;
+    }
+    
     setIsLoading(true);
+    setError('');
+    
     try {
       const response = await api.post('/api/workspaces', workspace);
       setWorkspaceId(response.data.id);
       await api.patch(`/api/workspaces/${response.data.id}/onboarding-step`, { step: 2 });
       nextStep();
     } catch (error: any) {
-      alert('Error: ' + (error.response?.data?.detail || 'Failed to create workspace'));
+      setError(error.response?.data?.detail || 'Failed to create workspace');
     } finally {
       setIsLoading(false);
     }
@@ -87,7 +124,10 @@ export default function OnboardingPage() {
   // Step 2: Email Integration
   const handleStep2 = async () => {
     setIsLoading(true);
+    setError('');
+    
     try {
+      // Save email integration (even if credentials are demo/empty)
       await api.post(`/api/workspaces/${workspaceId}/integrations`, {
         type: 'email',
         provider: 'smtp',
@@ -96,7 +136,7 @@ export default function OnboardingPage() {
       await api.patch(`/api/workspaces/${workspaceId}/onboarding-step`, { step: 3 });
       nextStep();
     } catch (error: any) {
-      alert('Error: ' + (error.response?.data?.detail || 'Failed to setup email'));
+      setError(error.response?.data?.detail || 'Failed to setup email');
     } finally {
       setIsLoading(false);
     }
@@ -105,12 +145,14 @@ export default function OnboardingPage() {
   // Step 3: Contact Form
   const handleStep3 = async () => {
     setIsLoading(true);
+    setError('');
+    
     try {
       await api.post(`/api/workspaces/${workspaceId}/contact-forms`, contactForm);
       await api.patch(`/api/workspaces/${workspaceId}/onboarding-step`, { step: 4 });
       nextStep();
     } catch (error: any) {
-      alert('Error: ' + (error.response?.data?.detail || 'Failed to create contact form'));
+      setError(error.response?.data?.detail || 'Failed to create contact form');
     } finally {
       setIsLoading(false);
     }
@@ -118,8 +160,14 @@ export default function OnboardingPage() {
 
   // Step 4: Add Service
   const addService = async () => {
-    if (!newService.name) return;
+    if (!newService.name) {
+      setError('Service name is required');
+      return;
+    }
+    
     setIsLoading(true);
+    setError('');
+    
     try {
       const response = await api.post(`/api/workspaces/${workspaceId}/services`, {
         ...newService,
@@ -130,11 +178,12 @@ export default function OnboardingPage() {
         name: '',
         description: '',
         duration_minutes: 60,
-        location: '',
+        location: workspace.address || '',
         color: '#3B82F6'
       });
+      setError('');
     } catch (error: any) {
-      alert('Error adding service');
+      setError('Error adding service');
     } finally {
       setIsLoading(false);
     }
@@ -142,29 +191,97 @@ export default function OnboardingPage() {
 
   const handleStep4 = async () => {
     if (services.length === 0) {
-      alert('Please add at least one service');
+      setError('Please add at least one service type');
       return;
     }
+    
     await api.patch(`/api/workspaces/${workspaceId}/onboarding-step`, { step: 5 });
+    
+    // Auto-select first service for availability
+    if (services.length > 0) {
+      setSelectedServiceForAvailability(services[0].id);
+    }
+    
     nextStep();
   };
 
-  // Step 5: Skip for now (availability setup)
+  // Step 5: Availability
   const handleStep5 = async () => {
-    await api.patch(`/api/workspaces/${workspaceId}/onboarding-step`, { step: 6 });
-    nextStep();
-  };
-
-  // Step 6: Skip for now (post-booking forms)
-  const handleStep6 = async () => {
-    await api.patch(`/api/workspaces/${workspaceId}/onboarding-step`, { step: 7 });
-    nextStep();
-  };
-
-  // Step 7: Inventory (optional)
-  const addInventoryItem = async () => {
-    if (!newInventoryItem.name) return;
+    if (!selectedServiceForAvailability) {
+      setError('Please select a service to configure availability');
+      return;
+    }
+    
     setIsLoading(true);
+    setError('');
+    
+    try {
+      // Save availability for selected service
+      for (const slot of availability) {
+        if (slot.enabled) {
+          await api.post(
+            `/api/workspaces/${workspaceId}/services/${selectedServiceForAvailability}/availability`,
+            {
+              day_of_week: slot.day,
+              start_time: slot.start,
+              end_time: slot.end
+            }
+          );
+        }
+      }
+      
+      await api.patch(`/api/workspaces/${workspaceId}/onboarding-step`, { step: 6 });
+      
+      // Auto-select first service for forms
+      if (services.length > 0) {
+        setSelectedServiceForForms(services[0].id);
+      }
+      
+      nextStep();
+    } catch (error: any) {
+      setError('Failed to save availability');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Step 6: Post-Booking Forms
+  const handleStep6 = async () => {
+    if (!selectedServiceForForms) {
+      setError('Please select a service for the intake form');
+      return;
+    }
+    
+    setIsLoading(true);
+    setError('');
+    
+    try {
+      await api.post(`/api/workspaces/${workspaceId}/post-booking-forms`, {
+        service_type_id: selectedServiceForForms,
+        name: postBookingForm.name,
+        description: postBookingForm.description,
+        fields: postBookingForm.fields
+      });
+      
+      await api.patch(`/api/workspaces/${workspaceId}/onboarding-step`, { step: 7 });
+      nextStep();
+    } catch (error: any) {
+      setError('Failed to create post-booking form');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Step 7: Inventory
+  const addInventoryItem = async () => {
+    if (!newInventoryItem.name) {
+      setError('Item name is required');
+      return;
+    }
+    
+    setIsLoading(true);
+    setError('');
+    
     try {
       const response = await api.post(`/api/workspaces/${workspaceId}/inventory`, {
         ...newInventoryItem,
@@ -173,13 +290,15 @@ export default function OnboardingPage() {
       setInventory([...inventory, response.data]);
       setNewInventoryItem({
         name: '',
+        description: '',
         quantity: 0,
         low_stock_threshold: 10,
         unit: 'pieces',
         vendor_email: ''
       });
+      setError('');
     } catch (error: any) {
-      alert('Error adding inventory item');
+      setError('Error adding inventory item');
     } finally {
       setIsLoading(false);
     }
@@ -193,20 +312,24 @@ export default function OnboardingPage() {
   // Step 8: Activate
   const handleActivate = async () => {
     setIsLoading(true);
+    setError('');
+    
     try {
       await api.patch(`/api/workspaces/${workspaceId}/activate`);
       router.push('/dashboard');
     } catch (error: any) {
-      alert('Error activating workspace');
+      setError('Error activating workspace');
     } finally {
       setIsLoading(false);
     }
   };
 
+  const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-indigo-50">
       {/* Progress Bar */}
-      <div className="bg-white border-b">
+      <div className="bg-white border-b shadow-sm">
         <div className="max-w-4xl mx-auto px-4 py-6">
           <div className="flex items-center justify-between mb-2">
             <span className="text-sm font-medium text-gray-700">
@@ -216,7 +339,7 @@ export default function OnboardingPage() {
           </div>
           <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
             <div
-              className="h-full bg-blue-600 transition-all duration-300"
+              className="h-full bg-gradient-to-r from-blue-600 to-indigo-600 transition-all duration-300"
               style={{ width: `${(currentStep / 8) * 100}%` }}
             />
           </div>
@@ -225,71 +348,103 @@ export default function OnboardingPage() {
 
       {/* Content */}
       <div className="max-w-4xl mx-auto px-4 py-8">
-        <div className="bg-white rounded-xl shadow-sm p-8">
+        <div className="bg-white rounded-2xl shadow-xl p-8 border border-gray-100">
+          {/* Error Message */}
+          {error && (
+            <div className="mb-6 px-4 py-3 bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg">
+              {error}
+            </div>
+          )}
+
           {/* Step 1: Workspace */}
           {currentStep === 1 && (
             <div>
-              <h2 className="text-2xl font-bold mb-2">Create Your Workspace</h2>
-              <p className="text-gray-600 mb-6">Let's start with the basics about your business</p>
+              <h2 className="text-3xl font-bold mb-2 text-gray-900">Create Your Workspace</h2>
+              <p className="text-gray-600 mb-8">Let's start with the basics about your business</p>
 
-              <div className="space-y-4">
+              <div className="space-y-5">
                 <div>
-                  <label className="block text-sm font-medium mb-1">Business Name *</label>
+                  <label className="block text-sm font-medium mb-2 text-gray-700">Business Name *</label>
                   <input
                     type="text"
                     value={workspace.business_name}
                     onChange={(e) => setWorkspace({ ...workspace, business_name: e.target.value })}
-                    className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                     placeholder="Acme Healthcare"
                     required
                   />
                 </div>
 
+                <div>
+                  <label className="block text-sm font-medium mb-2 text-gray-700">Address</label>
+                  <input
+                    type="text"
+                    value={workspace.address}
+                    onChange={(e) => setWorkspace({ ...workspace, address: e.target.value })}
+                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    placeholder="123 Main Street"
+                  />
+                </div>
+
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm font-medium mb-1">City</label>
+                    <label className="block text-sm font-medium mb-2 text-gray-700">City</label>
                     <input
                       type="text"
                       value={workspace.city}
                       onChange={(e) => setWorkspace({ ...workspace, city: e.target.value })}
-                      className="w-full px-4 py-2 border rounded-lg"
+                      className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                       placeholder="New York"
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium mb-1">State</label>
+                    <label className="block text-sm font-medium mb-2 text-gray-700">State</label>
                     <input
                       type="text"
                       value={workspace.state}
                       onChange={(e) => setWorkspace({ ...workspace, state: e.target.value })}
-                      className="w-full px-4 py-2 border rounded-lg"
+                      className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                       placeholder="NY"
                     />
                   </div>
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium mb-1">Contact Email</label>
+                  <label className="block text-sm font-medium mb-2 text-gray-700">Contact Email</label>
                   <input
                     type="email"
                     value={workspace.contact_email}
                     onChange={(e) => setWorkspace({ ...workspace, contact_email: e.target.value })}
-                    className="w-full px-4 py-2 border rounded-lg"
+                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                     placeholder="contact@acme.com"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium mb-1">Timezone</label>
+                  <label className="block text-sm font-medium mb-2 text-gray-700">Contact Phone</label>
+                  <input
+                    type="tel"
+                    value={workspace.contact_phone}
+                    onChange={(e) => setWorkspace({ ...workspace, contact_phone: e.target.value })}
+                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    placeholder="(555) 123-4567"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium mb-2 text-gray-700">Timezone</label>
                   <select
                     value={workspace.timezone}
                     onChange={(e) => setWorkspace({ ...workspace, timezone: e.target.value })}
-                    className="w-full px-4 py-2 border rounded-lg"
+                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   >
-                    <option value="America/New_York">Eastern Time</option>
-                    <option value="America/Chicago">Central Time</option>
-                    <option value="America/Denver">Mountain Time</option>
-                    <option value="America/Los_Angeles">Pacific Time</option>
+                    <option value="America/New_York">Eastern Time (ET)</option>
+                    <option value="America/Chicago">Central Time (CT)</option>
+                    <option value="America/Denver">Mountain Time (MT)</option>
+                    <option value="America/Los_Angeles">Pacific Time (PT)</option>
+                    <option value="America/Phoenix">Arizona</option>
+                    <option value="America/Anchorage">Alaska</option>
+                    <option value="Pacific/Honolulu">Hawaii</option>
                   </select>
                 </div>
               </div>
@@ -297,9 +452,9 @@ export default function OnboardingPage() {
               <button
                 onClick={handleStep1}
                 disabled={isLoading || !workspace.business_name}
-                className="mt-6 w-full bg-blue-600 text-white py-3 rounded-lg font-semibold hover:bg-blue-700 disabled:opacity-50"
+                className="mt-8 w-full bg-gradient-to-r from-blue-600 to-indigo-600 text-white py-4 rounded-lg font-semibold hover:from-blue-700 hover:to-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg transition-all"
               >
-                {isLoading ? 'Creating...' : 'Continue'}
+                {isLoading ? 'Creating Workspace...' : 'Continue →'}
               </button>
             </div>
           )}
@@ -307,60 +462,77 @@ export default function OnboardingPage() {
           {/* Step 2: Email Integration */}
           {currentStep === 2 && (
             <div>
-              <h2 className="text-2xl font-bold mb-2">Email Integration</h2>
-              <p className="text-gray-600 mb-6">Connect your email to send confirmations and reminders</p>
+              <h2 className="text-3xl font-bold mb-2 text-gray-900">Email Integration</h2>
+              <p className="text-gray-600 mb-8">Connect your email to send confirmations and reminders</p>
 
-              <div className="space-y-4">
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
+                <p className="text-sm text-blue-900">
+                  <strong>💡 Demo Mode:</strong> You can skip email configuration for now. The system will simulate sending emails.
+                  For production, use Gmail App Password or your SMTP credentials.
+                </p>
+              </div>
+
+              <div className="space-y-5">
                 <div>
-                  <label className="block text-sm font-medium mb-1">SMTP Host</label>
+                  <label className="block text-sm font-medium mb-2 text-gray-700">SMTP Host</label>
                   <input
                     type="text"
                     value={emailConfig.smtp_host}
                     onChange={(e) => setEmailConfig({ ...emailConfig, smtp_host: e.target.value })}
-                    className="w-full px-4 py-2 border rounded-lg"
+                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                     placeholder="smtp.gmail.com"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium mb-1">Email Address</label>
+                  <label className="block text-sm font-medium mb-2 text-gray-700">SMTP Port</label>
+                  <input
+                    type="number"
+                    value={emailConfig.smtp_port}
+                    onChange={(e) => setEmailConfig({ ...emailConfig, smtp_port: parseInt(e.target.value) })}
+                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium mb-2 text-gray-700">Email Address (Optional)</label>
                   <input
                     type="email"
                     value={emailConfig.smtp_user}
                     onChange={(e) => setEmailConfig({ ...emailConfig, smtp_user: e.target.value })}
-                    className="w-full px-4 py-2 border rounded-lg"
+                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                     placeholder="your-email@gmail.com"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium mb-1">App Password</label>
+                  <label className="block text-sm font-medium mb-2 text-gray-700">App Password (Optional)</label>
                   <input
                     type="password"
                     value={emailConfig.smtp_password}
                     onChange={(e) => setEmailConfig({ ...emailConfig, smtp_password: e.target.value })}
-                    className="w-full px-4 py-2 border rounded-lg"
+                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                     placeholder="••••••••••••••••"
                   />
-                  <p className="text-xs text-gray-500 mt-1">
-                    For Gmail, use an App Password (not your regular password)
+                  <p className="text-xs text-gray-500 mt-2">
+                    For Gmail: <a href="https://support.google.com/accounts/answer/185833" target="_blank" className="text-blue-600 hover:underline">Generate App Password</a>
                   </p>
                 </div>
               </div>
 
-              <div className="flex gap-3 mt-6">
+              <div className="flex gap-3 mt-8">
                 <button
                   onClick={prevStep}
-                  className="flex-1 bg-gray-200 text-gray-700 py-3 rounded-lg font-semibold hover:bg-gray-300"
+                  className="flex-1 bg-gray-200 text-gray-700 py-4 rounded-lg font-semibold hover:bg-gray-300 transition"
                 >
-                  Back
+                  ← Back
                 </button>
                 <button
                   onClick={handleStep2}
                   disabled={isLoading}
-                  className="flex-1 bg-blue-600 text-white py-3 rounded-lg font-semibold hover:bg-blue-700 disabled:opacity-50"
+                  className="flex-1 bg-gradient-to-r from-blue-600 to-indigo-600 text-white py-4 rounded-lg font-semibold hover:from-blue-700 hover:to-indigo-700 disabled:opacity-50 shadow-lg transition"
                 >
-                  {isLoading ? 'Saving...' : 'Continue'}
+                  {isLoading ? 'Saving...' : 'Continue →'}
                 </button>
               </div>
             </div>
@@ -369,32 +541,58 @@ export default function OnboardingPage() {
           {/* Step 3: Contact Form */}
           {currentStep === 3 && (
             <div>
-              <h2 className="text-2xl font-bold mb-2">Contact Form</h2>
-              <p className="text-gray-600 mb-6">Default contact form is ready. You can customize it later.</p>
+              <h2 className="text-3xl font-bold mb-2 text-gray-900">Contact Form Setup</h2>
+              <p className="text-gray-600 mb-8">Configure the form that customers will use to reach you</p>
 
-              <div className="bg-gray-50 p-4 rounded-lg space-y-2">
-                {contactForm.fields.map((field, idx) => (
-                  <div key={idx} className="flex items-center gap-2 text-sm">
-                    <span className="font-medium">{field.label}</span>
-                    <span className="text-gray-500">({field.type})</span>
-                    {field.required && <span className="text-red-500">*</span>}
-                  </div>
-                ))}
+              <div className="space-y-5 mb-6">
+                <div>
+                  <label className="block text-sm font-medium mb-2 text-gray-700">Form Name</label>
+                  <input
+                    type="text"
+                    value={contactForm.name}
+                    onChange={(e) => setContactForm({ ...contactForm, name: e.target.value })}
+                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium mb-2 text-gray-700">Welcome Message</label>
+                  <textarea
+                    value={contactForm.welcome_message}
+                    onChange={(e) => setContactForm({ ...contactForm, welcome_message: e.target.value })}
+                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    rows={3}
+                  />
+                  <p className="text-xs text-gray-500 mt-1">This message will be sent automatically when someone submits the form</p>
+                </div>
               </div>
 
-              <div className="flex gap-3 mt-6">
+              <div className="bg-gray-50 p-6 rounded-lg border border-gray-200">
+                <h3 className="font-semibold text-gray-900 mb-4">Form Fields Preview</h3>
+                <div className="space-y-3">
+                  {contactForm.fields.map((field, idx) => (
+                    <div key={idx} className="flex items-center gap-3 text-sm bg-white p-3 rounded border border-gray-200">
+                      <span className="font-medium text-gray-900">{field.label}</span>
+                      <span className="text-gray-500">({field.type})</span>
+                      {field.required && <span className="text-red-500 text-xs font-semibold">Required</span>}
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="flex gap-3 mt-8">
                 <button
                   onClick={prevStep}
-                  className="flex-1 bg-gray-200 text-gray-700 py-3 rounded-lg font-semibold hover:bg-gray-300"
+                  className="flex-1 bg-gray-200 text-gray-700 py-4 rounded-lg font-semibold hover:bg-gray-300 transition"
                 >
-                  Back
+                  ← Back
                 </button>
                 <button
                   onClick={handleStep3}
                   disabled={isLoading}
-                  className="flex-1 bg-blue-600 text-white py-3 rounded-lg font-semibold hover:bg-blue-700 disabled:opacity-50"
+                  className="flex-1 bg-gradient-to-r from-blue-600 to-indigo-600 text-white py-4 rounded-lg font-semibold hover:from-blue-700 hover:to-indigo-700 disabled:opacity-50 shadow-lg transition"
                 >
-                  {isLoading ? 'Saving...' : 'Continue'}
+                  {isLoading ? 'Saving...' : 'Continue →'}
                 </button>
               </div>
             </div>
@@ -403,55 +601,100 @@ export default function OnboardingPage() {
           {/* Step 4: Services */}
           {currentStep === 4 && (
             <div>
-              <h2 className="text-2xl font-bold mb-2">Service Types</h2>
-              <p className="text-gray-600 mb-6">What services do you offer?</p>
+              <h2 className="text-3xl font-bold mb-2 text-gray-900">Service Types</h2>
+              <p className="text-gray-600 mb-8">What services do you offer to your customers?</p>
 
-              <div className="space-y-4 mb-6">
-                {services.map((service, idx) => (
-                  <div key={idx} className="bg-gray-50 p-4 rounded-lg">
-                    <h3 className="font-semibold">{service.name}</h3>
-                    <p className="text-sm text-gray-600">{service.duration_minutes} minutes</p>
+              {/* Existing Services */}
+              {services.length > 0 && (
+                <div className="space-y-3 mb-6">
+                  <h3 className="font-semibold text-gray-900">Your Services</h3>
+                  {services.map((service, idx) => (
+                    <div key={idx} className="bg-gradient-to-r from-blue-50 to-indigo-50 p-4 rounded-lg border border-blue-200">
+                      <div className="flex items-start justify-between">
+                        <div>
+                          <h3 className="font-semibold text-gray-900">{service.name}</h3>
+                          {service.description && (
+                            <p className="text-sm text-gray-600 mt-1">{service.description}</p>
+                          )}
+                          <p className="text-sm text-gray-500 mt-2">⏱ {service.duration_minutes} minutes</p>
+                        </div>
+                        <span 
+                          className="w-4 h-4 rounded-full flex-shrink-0" 
+                          style={{ backgroundColor: service.color }}
+                        />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Add New Service */}
+              <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 bg-gray-50">
+                <h3 className="font-semibold text-gray-900 mb-4">Add New Service</h3>
+                <div className="space-y-4">
+                  <div>
+                    <input
+                      type="text"
+                      value={newService.name}
+                      onChange={(e) => setNewService({ ...newService, name: e.target.value })}
+                      className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      placeholder="Service name (e.g., Consultation, Checkup)"
+                    />
                   </div>
-                ))}
+                  <div>
+                    <textarea
+                      value={newService.description}
+                      onChange={(e) => setNewService({ ...newService, description: e.target.value })}
+                      className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      placeholder="Brief description (optional)"
+                      rows={2}
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 mb-1">Duration (minutes)</label>
+                      <input
+                        type="number"
+                        value={newService.duration_minutes}
+                        onChange={(e) => setNewService({ ...newService, duration_minutes: parseInt(e.target.value) || 0 })}
+                        className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        min="15"
+                        step="15"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 mb-1">Color</label>
+                      <input
+                        type="color"
+                        value={newService.color}
+                        onChange={(e) => setNewService({ ...newService, color: e.target.value })}
+                        className="w-full h-[50px] border border-gray-300 rounded-lg"
+                      />
+                    </div>
+                  </div>
+                  <button
+                    onClick={addService}
+                    disabled={isLoading || !newService.name}
+                    className="w-full bg-green-600 text-white py-3 rounded-lg font-semibold hover:bg-green-700 disabled:opacity-50 transition shadow-sm"
+                  >
+                    ➕ Add Service
+                  </button>
+                </div>
               </div>
 
-              <div className="border-t pt-6 space-y-3">
-                <input
-                  type="text"
-                  value={newService.name}
-                  onChange={(e) => setNewService({ ...newService, name: e.target.value })}
-                  className="w-full px-4 py-2 border rounded-lg"
-                  placeholder="Service name (e.g., Consultation)"
-                />
-                <input
-                  type="number"
-                  value={newService.duration_minutes}
-                  onChange={(e) => setNewService({ ...newService, duration_minutes: parseInt(e.target.value) })}
-                  className="w-full px-4 py-2 border rounded-lg"
-                  placeholder="Duration (minutes)"
-                />
-                <button
-                  onClick={addService}
-                  disabled={isLoading}
-                  className="w-full bg-green-600 text-white py-2 rounded-lg hover:bg-green-700"
-                >
-                  Add Service
-                </button>
-              </div>
-
-              <div className="flex gap-3 mt-6">
+              <div className="flex gap-3 mt-8">
                 <button
                   onClick={prevStep}
-                  className="flex-1 bg-gray-200 text-gray-700 py-3 rounded-lg font-semibold hover:bg-gray-300"
+                  className="flex-1 bg-gray-200 text-gray-700 py-4 rounded-lg font-semibold hover:bg-gray-300 transition"
                 >
-                  Back
+                  ← Back
                 </button>
                 <button
                   onClick={handleStep4}
                   disabled={services.length === 0}
-                  className="flex-1 bg-blue-600 text-white py-3 rounded-lg font-semibold hover:bg-blue-700 disabled:opacity-50"
+                  className="flex-1 bg-gradient-to-r from-blue-600 to-indigo-600 text-white py-4 rounded-lg font-semibold hover:from-blue-700 hover:to-indigo-700 disabled:opacity-50 shadow-lg transition"
                 >
-                  Continue
+                  Continue →
                 </button>
               </div>
             </div>
@@ -460,27 +703,103 @@ export default function OnboardingPage() {
           {/* Step 5: Availability */}
           {currentStep === 5 && (
             <div>
-              <h2 className="text-2xl font-bold mb-2">Availability</h2>
-              <p className="text-gray-600 mb-6">Set your working hours (you can customize this later)</p>
+              <h2 className="text-3xl font-bold mb-2 text-gray-900">Set Your Availability</h2>
+              <p className="text-gray-600 mb-8">When are you available to serve customers?</p>
 
-              <div className="bg-blue-50 p-4 rounded-lg mb-6">
-                <p className="text-sm">
-                  Default availability will be set to Monday-Friday, 9 AM - 5 PM. You can customize this in settings.
-                </p>
+              {/* Service Selection */}
+              <div className="mb-6">
+                <label className="block text-sm font-medium mb-2 text-gray-700">Select Service</label>
+                <select
+                  value={selectedServiceForAvailability}
+                  onChange={(e) => setSelectedServiceForAvailability(e.target.value)}
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                >
+                  <option value="">Choose a service...</option>
+                  {services.map((service) => (
+                    <option key={service.id} value={service.id}>
+                      {service.name}
+                    </option>
+                  ))}
+                </select>
               </div>
 
-              <div className="flex gap-3 mt-6">
+              {selectedServiceForAvailability && (
+                <div className="space-y-3">
+                  {availability.map((slot, idx) => {
+                    const dayName = dayNames[slot.day];
+                    return (
+                      <div
+                        key={idx}
+                        className={`p-4 rounded-lg border-2 transition ${
+                          slot.enabled
+                            ? 'bg-blue-50 border-blue-300'
+                            : 'bg-gray-50 border-gray-200'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-4 flex-1">
+                            <label className="flex items-center cursor-pointer">
+                              <input
+                                type="checkbox"
+                                checked={slot.enabled}
+                                onChange={(e) => {
+                                  const updated = [...availability];
+                                  updated[idx].enabled = e.target.checked;
+                                  setAvailability(updated);
+                                }}
+                                className="w-5 h-5 text-blue-600 rounded focus:ring-2 focus:ring-blue-500"
+                              />
+                              <span className="ml-3 font-semibold text-gray-900 min-w-[80px]">
+                                {dayName}
+                              </span>
+                            </label>
+
+                            {slot.enabled && (
+                              <div className="flex items-center gap-2">
+                                <input
+                                  type="time"
+                                  value={slot.start}
+                                  onChange={(e) => {
+                                    const updated = [...availability];
+                                    updated[idx].start = e.target.value;
+                                    setAvailability(updated);
+                                  }}
+                                  className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500"
+                                />
+                                <span className="text-gray-500">to</span>
+                                <input
+                                  type="time"
+                                  value={slot.end}
+                                  onChange={(e) => {
+                                    const updated = [...availability];
+                                    updated[idx].end = e.target.value;
+                                    setAvailability(updated);
+                                  }}
+                                  className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500"
+                                />
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              <div className="flex gap-3 mt-8">
                 <button
                   onClick={prevStep}
-                  className="flex-1 bg-gray-200 text-gray-700 py-3 rounded-lg font-semibold hover:bg-gray-300"
+                  className="flex-1 bg-gray-200 text-gray-700 py-4 rounded-lg font-semibold hover:bg-gray-300 transition"
                 >
-                  Back
+                  ← Back
                 </button>
                 <button
                   onClick={handleStep5}
-                  className="flex-1 bg-blue-600 text-white py-3 rounded-lg font-semibold hover:bg-blue-700"
+                  disabled={isLoading || !selectedServiceForAvailability}
+                  className="flex-1 bg-gradient-to-r from-blue-600 to-indigo-600 text-white py-4 rounded-lg font-semibold hover:from-blue-700 hover:to-indigo-700 disabled:opacity-50 shadow-lg transition"
                 >
-                  Continue
+                  {isLoading ? 'Saving...' : 'Continue →'}
                 </button>
               </div>
             </div>
@@ -489,27 +808,76 @@ export default function OnboardingPage() {
           {/* Step 6: Post-Booking Forms */}
           {currentStep === 6 && (
             <div>
-              <h2 className="text-2xl font-bold mb-2">Post-Booking Forms</h2>
-              <p className="text-gray-600 mb-6">Collect information after appointments (optional)</p>
+              <h2 className="text-3xl font-bold mb-2 text-gray-900">Post-Booking Forms</h2>
+              <p className="text-gray-600 mb-8">Collect information from customers after they book an appointment</p>
 
-              <div className="bg-blue-50 p-4 rounded-lg mb-6">
-                <p className="text-sm">
-                  You can create intake forms and questionnaires later from your dashboard.
-                </p>
+              <div className="mb-6">
+                <label className="block text-sm font-medium mb-2 text-gray-700">Select Service for Intake Form</label>
+                <select
+                  value={selectedServiceForForms}
+                  onChange={(e) => setSelectedServiceForForms(e.target.value)}
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                >
+                  <option value="">Choose a service...</option>
+                  {services.map((service) => (
+                    <option key={service.id} value={service.id}>
+                      {service.name}
+                    </option>
+                  ))}
+                </select>
               </div>
 
-              <div className="flex gap-3 mt-6">
+              {selectedServiceForForms && (
+                <>
+                  <div className="space-y-4 mb-6">
+                    <div>
+                      <label className="block text-sm font-medium mb-2 text-gray-700">Form Name</label>
+                      <input
+                        type="text"
+                        value={postBookingForm.name}
+                        onChange={(e) => setPostBookingForm({ ...postBookingForm, name: e.target.value })}
+                        className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium mb-2 text-gray-700">Description</label>
+                      <textarea
+                        value={postBookingForm.description}
+                        onChange={(e) => setPostBookingForm({ ...postBookingForm, description: e.target.value })}
+                        className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        rows={2}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="bg-gray-50 p-6 rounded-lg border border-gray-200">
+                    <h3 className="font-semibold text-gray-900 mb-4">Form Fields</h3>
+                    <div className="space-y-3">
+                      {postBookingForm.fields.map((field, idx) => (
+                        <div key={idx} className="flex items-center gap-3 text-sm bg-white p-3 rounded border border-gray-200">
+                          <span className="font-medium text-gray-900">{field.label}</span>
+                          <span className="text-gray-500">({field.type})</span>
+                          {field.required && <span className="text-red-500 text-xs font-semibold">Required</span>}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </>
+              )}
+
+              <div className="flex gap-3 mt-8">
                 <button
                   onClick={prevStep}
-                  className="flex-1 bg-gray-200 text-gray-700 py-3 rounded-lg font-semibold hover:bg-gray-300"
+                  className="flex-1 bg-gray-200 text-gray-700 py-4 rounded-lg font-semibold hover:bg-gray-300 transition"
                 >
-                  Back
+                  ← Back
                 </button>
                 <button
                   onClick={handleStep6}
-                  className="flex-1 bg-blue-600 text-white py-3 rounded-lg font-semibold hover:bg-blue-700"
+                  disabled={isLoading || !selectedServiceForForms}
+                  className="flex-1 bg-gradient-to-r from-blue-600 to-indigo-600 text-white py-4 rounded-lg font-semibold hover:from-blue-700 hover:to-indigo-700 disabled:opacity-50 shadow-lg transition"
                 >
-                  Continue
+                  {isLoading ? 'Saving...' : 'Continue →'}
                 </button>
               </div>
             </div>
@@ -518,63 +886,104 @@ export default function OnboardingPage() {
           {/* Step 7: Inventory */}
           {currentStep === 7 && (
             <div>
-              <h2 className="text-2xl font-bold mb-2">Inventory (Optional)</h2>
-              <p className="text-gray-600 mb-6">Track supplies and get low-stock alerts</p>
+              <h2 className="text-3xl font-bold mb-2 text-gray-900">Inventory Management</h2>
+              <p className="text-gray-600 mb-8">Track supplies and get low-stock alerts (optional)</p>
 
-              <div className="space-y-4 mb-6">
-                {inventory.map((item, idx) => (
-                  <div key={idx} className="bg-gray-50 p-4 rounded-lg">
-                    <h3 className="font-semibold">{item.name}</h3>
-                    <p className="text-sm text-gray-600">Quantity: {item.quantity} {item.unit}</p>
-                  </div>
-                ))}
-              </div>
+              {/* Existing Inventory */}
+              {inventory.length > 0 && (
+                <div className="space-y-3 mb-6">
+                  <h3 className="font-semibold text-gray-900">Your Inventory</h3>
+                  {inventory.map((item, idx) => (
+                    <div key={idx} className="bg-gray-50 p-4 rounded-lg border border-gray-200">
+                      <h3 className="font-semibold text-gray-900">{item.name}</h3>
+                      <p className="text-sm text-gray-600 mt-1">
+                        Stock: {item.quantity} {item.unit} · Threshold: {item.low_stock_threshold} {item.unit}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              )}
 
-              <div className="border-t pt-6 space-y-3">
-                <input
-                  type="text"
-                  value={newInventoryItem.name}
-                  onChange={(e) => setNewInventoryItem({ ...newInventoryItem, name: e.target.value })}
-                  className="w-full px-4 py-2 border rounded-lg"
-                  placeholder="Item name (e.g., Gloves)"
-                />
-                <div className="grid grid-cols-2 gap-3">
-                  <input
-                    type="number"
-                    value={newInventoryItem.quantity}
-                    onChange={(e) => setNewInventoryItem({ ...newInventoryItem, quantity: parseInt(e.target.value) })}
-                    className="w-full px-4 py-2 border rounded-lg"
-                    placeholder="Quantity"
-                  />
+              {/* Add New Item */}
+              <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 bg-gray-50">
+                <h3 className="font-semibold text-gray-900 mb-4">Add Inventory Item</h3>
+                <div className="space-y-4">
                   <input
                     type="text"
-                    value={newInventoryItem.unit}
-                    onChange={(e) => setNewInventoryItem({ ...newInventoryItem, unit: e.target.value })}
-                    className="w-full px-4 py-2 border rounded-lg"
-                    placeholder="Unit (pieces, boxes)"
+                    value={newInventoryItem.name}
+                    onChange={(e) => setNewInventoryItem({ ...newInventoryItem, name: e.target.value })}
+                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    placeholder="Item name (e.g., Gloves, Masks)"
                   />
+                  <textarea
+                    value={newInventoryItem.description}
+                    onChange={(e) => setNewInventoryItem({ ...newInventoryItem, description: e.target.value })}
+                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    placeholder="Description (optional)"
+                    rows={2}
+                  />
+                  <div className="grid grid-cols-3 gap-3">
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 mb-1">Quantity</label>
+                      <input
+                        type="number"
+                        value={newInventoryItem.quantity}
+                        onChange={(e) => setNewInventoryItem({ ...newInventoryItem, quantity: parseInt(e.target.value) || 0 })}
+                        className="w-full px-4 py-3 border border-gray-300 rounded-lg"
+                        min="0"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 mb-1">Unit</label>
+                      <input
+                        type="text"
+                        value={newInventoryItem.unit}
+                        onChange={(e) => setNewInventoryItem({ ...newInventoryItem, unit: e.target.value })}
+                        className="w-full px-4 py-3 border border-gray-300 rounded-lg"
+                        placeholder="pieces"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 mb-1">Low Stock</label>
+                      <input
+                        type="number"
+                        value={newInventoryItem.low_stock_threshold}
+                        onChange={(e) => setNewInventoryItem({ ...newInventoryItem, low_stock_threshold: parseInt(e.target.value) || 0 })}
+                        className="w-full px-4 py-3 border border-gray-300 rounded-lg"
+                        min="0"
+                      />
+                    </div>
+                  </div>
+                  <input
+                    type="email"
+                    value={newInventoryItem.vendor_email}
+                    onChange={(e) => setNewInventoryItem({ ...newInventoryItem, vendor_email: e.target.value })}
+                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    placeholder="Vendor email (optional)"
+                  />
+                  <button
+                    onClick={addInventoryItem}
+                    disabled={isLoading || !newInventoryItem.name}
+                    className="w-full bg-green-600 text-white py-3 rounded-lg font-semibold hover:bg-green-700 disabled:opacity-50 transition shadow-sm"
+                  >
+                    ➕ Add Item
+                  </button>
                 </div>
-                <button
-                  onClick={addInventoryItem}
-                  disabled={isLoading}
-                  className="w-full bg-green-600 text-white py-2 rounded-lg hover:bg-green-700"
-                >
-                  Add Item
-                </button>
               </div>
 
-              <div className="flex gap-3 mt-6">
+              <div className="flex gap-3 mt-8">
                 <button
                   onClick={prevStep}
-                  className="flex-1 bg-gray-200 text-gray-700 py-3 rounded-lg font-semibold hover:bg-gray-300"
+                  className="flex-1 bg-gray-200 text-gray-700 py-4 rounded-lg font-semibold hover:bg-gray-300 transition"
                 >
-                  Back
+                  ← Back
                 </button>
                 <button
                   onClick={handleStep7}
-                  className="flex-1 bg-blue-600 text-white py-3 rounded-lg font-semibold hover:bg-blue-700"
+                  disabled={isLoading}
+                  className="flex-1 bg-gradient-to-r from-blue-600 to-indigo-600 text-white py-4 rounded-lg font-semibold hover:from-blue-700 hover:to-indigo-700 disabled:opacity-50 shadow-lg transition"
                 >
-                  Continue
+                  Continue →
                 </button>
               </div>
             </div>
@@ -583,43 +992,62 @@ export default function OnboardingPage() {
           {/* Step 8: Review & Activate */}
           {currentStep === 8 && (
             <div>
-              <h2 className="text-2xl font-bold mb-2">🎉 You're All Set!</h2>
-              <p className="text-gray-600 mb-6">Review your setup and activate your workspace</p>
+              <div className="text-center mb-8">
+                <div className="text-6xl mb-4">🎉</div>
+                <h2 className="text-3xl font-bold text-gray-900 mb-2">You're All Set!</h2>
+                <p className="text-gray-600">Review your setup and activate your workspace</p>
+              </div>
 
-              <div className="space-y-4">
-                <div className="bg-green-50 border border-green-200 p-4 rounded-lg">
-                  <h3 className="font-semibold text-green-900 mb-2">Completed Steps:</h3>
-                  <ul className="space-y-1 text-sm text-green-800">
-                    <li>✓ Workspace created</li>
-                    <li>✓ Email integration configured</li>
-                    <li>✓ Contact form ready</li>
-                    <li>✓ {services.length} service(s) added</li>
-                    <li>✓ Availability set to default hours</li>
-                    <li>✓ {inventory.length} inventory item(s) added</li>
+              <div className="space-y-4 mb-8">
+                <div className="bg-gradient-to-r from-green-50 to-emerald-50 border border-green-200 p-6 rounded-lg">
+                  <h3 className="font-semibold text-green-900 mb-3 text-lg">✅ Completed Steps</h3>
+                  <ul className="space-y-2 text-sm text-green-800">
+                    <li className="flex items-center gap-2">
+                      <span className="text-green-600">✓</span> Workspace created: <strong>{workspace.business_name}</strong>
+                    </li>
+                    <li className="flex items-center gap-2">
+                      <span className="text-green-600">✓</span> Email integration configured
+                    </li>
+                    <li className="flex items-center gap-2">
+                      <span className="text-green-600">✓</span> Contact form ready
+                    </li>
+                    <li className="flex items-center gap-2">
+                      <span className="text-green-600">✓</span> {services.length} service type(s) added
+                    </li>
+                    <li className="flex items-center gap-2">
+                      <span className="text-green-600">✓</span> Availability configured
+                    </li>
+                    <li className="flex items-center gap-2">
+                      <span className="text-green-600">✓</span> Post-booking forms created
+                    </li>
+                    <li className="flex items-center gap-2">
+                      <span className="text-green-600">✓</span> {inventory.length} inventory item(s) added
+                    </li>
                   </ul>
                 </div>
 
-                <div className="bg-blue-50 p-4 rounded-lg">
-                  <p className="text-sm text-blue-900">
-                    Your public booking page will be available at:<br />
-                    <strong className="font-mono">yoursite.com/book/{workspace.business_name.toLowerCase().replace(/\s+/g, '-')}</strong>
-                  </p>
+                <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 p-6 rounded-lg">
+                  <h3 className="font-semibold text-blue-900 mb-2">🔗 Your Public Booking Page</h3>
+                  <code className="text-sm text-blue-800 bg-white px-3 py-2 rounded border border-blue-200 block break-all">
+                    {typeof window !== 'undefined' && window.location.origin}/book/{workspace.business_name.toLowerCase().replace(/\s+/g, '-')}
+                  </code>
+                  <p className="text-xs text-blue-700 mt-2">Share this link with your customers to start accepting bookings!</p>
                 </div>
               </div>
 
-              <div className="flex gap-3 mt-6">
+              <div className="flex gap-3">
                 <button
                   onClick={prevStep}
-                  className="flex-1 bg-gray-200 text-gray-700 py-3 rounded-lg font-semibold hover:bg-gray-300"
+                  className="flex-1 bg-gray-200 text-gray-700 py-4 rounded-lg font-semibold hover:bg-gray-300 transition"
                 >
-                  Back
+                  ← Back
                 </button>
                 <button
                   onClick={handleActivate}
                   disabled={isLoading}
-                  className="flex-1 bg-gradient-to-r from-blue-600 to-indigo-600 text-white py-3 rounded-lg font-semibold hover:from-blue-700 hover:to-indigo-700 disabled:opacity-50"
+                  className="flex-[2] bg-gradient-to-r from-green-600 to-emerald-600 text-white py-4 rounded-lg text-lg font-bold hover:from-green-700 hover:to-emerald-700 disabled:opacity-50 shadow-lg transition transform hover:scale-105"
                 >
-                  {isLoading ? 'Activating...' : 'Activate Workspace 🚀'}
+                  {isLoading ? 'Activating...' : '🚀 Activate Workspace & Go to Dashboard'}
                 </button>
               </div>
             </div>
