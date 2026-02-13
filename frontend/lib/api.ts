@@ -199,6 +199,11 @@ export const publicApi = {
     return response.data;
   },
 
+  submitContactForm: async (slug: string, data: any) => {
+    const response = await axios.post(`${API_URL}/api/public/workspaces/${slug}/contact`, data);
+    return response.data;
+  },
+
   update: async (workspaceId: string, data: any) => {
     const response = await api.patch(`/api/workspaces/${workspaceId}`, data);
     return response.data;

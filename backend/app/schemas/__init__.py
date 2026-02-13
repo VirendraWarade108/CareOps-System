@@ -76,7 +76,7 @@ class ContactBase(BaseModel):
     custom_custom_metadata: Dict[str, Any] = {}
 
 class ContactCreate(ContactBase):
-    workspace_id: UUID
+    pass
 
 class ContactResponse(ContactBase):
     id: UUID
@@ -133,7 +133,7 @@ class ServiceTypeBase(BaseModel):
     color: str = "#3B82F6"
 
 class ServiceTypeCreate(ServiceTypeBase):
-    workspace_id: UUID
+    pass
 
 class ServiceTypeResponse(ServiceTypeBase):
     id: UUID
@@ -150,7 +150,7 @@ class AvailabilitySlotBase(BaseModel):
     end_time: time
 
 class AvailabilitySlotCreate(AvailabilitySlotBase):
-    service_type_id: UUID
+    pass
 
 class AvailabilitySlotResponse(AvailabilitySlotBase):
     id: UUID
@@ -206,7 +206,7 @@ class ContactFormBase(BaseModel):
     welcome_message: Optional[str] = None
 
 class ContactFormCreate(ContactFormBase):
-    workspace_id: UUID
+    pass
 
 class ContactFormResponse(ContactFormBase):
     id: UUID
@@ -261,7 +261,7 @@ class InventoryItemBase(BaseModel):
     vendor_email: Optional[EmailStr] = None
 
 class InventoryItemCreate(InventoryItemBase):
-    workspace_id: UUID
+    pass
 
 class InventoryItemUpdate(BaseModel):
     name: Optional[str] = None
@@ -280,7 +280,6 @@ class InventoryItemResponse(InventoryItemBase):
         from_attributes = True
 
 class InventoryUsageCreate(BaseModel):
-    item_id: UUID
     booking_id: Optional[UUID] = None
     quantity_used: int
     notes: Optional[str] = None
@@ -293,7 +292,7 @@ class IntegrationBase(BaseModel):
     config: Dict[str, Any]
 
 class IntegrationCreate(IntegrationBase):
-    workspace_id: UUID
+    pass
 
 class IntegrationResponse(BaseModel):
     id: UUID

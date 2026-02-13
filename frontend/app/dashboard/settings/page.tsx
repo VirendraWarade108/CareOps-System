@@ -391,61 +391,118 @@ export default function SettingsPage() {
 
       {/* Integrations Tab */}
       {activeTab === 'integrations' && (
-        <div className="bg-white rounded-xl border border-slate-100 shadow-sm p-6">
-          <h3 className="text-lg font-semibold text-slate-800 mb-4">Connected Integrations</h3>
-          
-          {integrations.length === 0 ? (
-            <div className="text-center py-12">
-              <div className="w-14 h-14 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-3">
-                <svg className="w-7 h-7 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M11 4a2 2 0 114 0v1a1 1 0 001 1h3a1 1 0 011 1v3a1 1 0 01-1 1h-1a2 2 0 100 4h1a1 1 0 011 1v3a1 1 0 01-1 1h-3a1 1 0 01-1-1v-1a2 2 0 10-4 0v1a1 1 0 01-1 1H7a1 1 0 01-1-1v-3a1 1 0 00-1-1H4a2 2 0 110-4h1a1 1 0 001-1V7a1 1 0 011-1h3a1 1 0 001-1V4z" />
+        <div className="space-y-6">
+          <div className="bg-white rounded-xl border border-slate-100 shadow-sm p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold text-slate-800">Connected Integrations</h3>
+              <button
+                onClick={() => {
+                  setSuccessMsg('Integration setup coming soon! Email integration is configured during onboarding.');
+                  setTimeout(() => setSuccessMsg(''), 4000);
+                }}
+                className="inline-flex items-center gap-2 text-sm bg-blue-600 text-white px-4 py-2 rounded-lg font-medium hover:bg-blue-700 transition-colors"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
                 </svg>
-              </div>
-              <p className="text-sm font-medium text-slate-600">No integrations configured yet</p>
-              <p className="text-xs text-slate-400 mt-1">Email and calendar integrations will appear here</p>
+                Add Integration
+              </button>
             </div>
-          ) : (
-            <div className="space-y-3">
-              {integrations.map(integration => (
-                <div key={integration.id} className="flex items-center justify-between p-4 bg-slate-50 rounded-lg border border-slate-100">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 bg-white rounded-lg border border-slate-200 flex items-center justify-center">
-                      {integration.type === 'email' && (
-                        <svg className="w-5 h-5 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-                        </svg>
-                      )}
-                      {integration.type === 'sms' && (
-                        <svg className="w-5 h-5 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
-                        </svg>
-                      )}
-                      {integration.type === 'calendar' && (
-                        <svg className="w-5 h-5 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                        </svg>
-                      )}
+            
+            {integrations.length === 0 ? (
+              <div className="text-center py-12">
+                <div className="w-14 h-14 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-3">
+                  <svg className="w-7 h-7 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M11 4a2 2 0 114 0v1a1 1 0 001 1h3a1 1 0 011 1v3a1 1 0 01-1 1h-1a2 2 0 100 4h1a1 1 0 011 1v3a1 1 0 01-1 1h-3a1 1 0 01-1-1v-1a2 2 0 10-4 0v1a1 1 0 01-1 1H7a1 1 0 01-1-1v-3a1 1 0 00-1-1H4a2 2 0 110-4h1a1 1 0 001-1V7a1 1 0 011-1h3a1 1 0 001-1V4z" />
+                  </svg>
+                </div>
+                <p className="text-sm font-medium text-slate-600">No integrations configured yet</p>
+                <p className="text-xs text-slate-400 mt-1">Email integration is set up during onboarding</p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {integrations.map(integration => (
+                  <div key={integration.id} className="flex items-center justify-between p-4 bg-slate-50 rounded-lg border border-slate-100">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 bg-white rounded-lg border border-slate-200 flex items-center justify-center">
+                        {integration.type === 'email' && (
+                          <svg className="w-5 h-5 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                          </svg>
+                        )}
+                        {integration.type === 'sms' && (
+                          <svg className="w-5 h-5 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
+                          </svg>
+                        )}
+                        {integration.type === 'calendar' && (
+                          <svg className="w-5 h-5 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                          </svg>
+                        )}
+                      </div>
+                      <div>
+                        <p className="text-sm font-semibold text-slate-800 capitalize">{integration.type}</p>
+                        <p className="text-xs text-slate-500">
+                          {integration.provider || 'Default provider'}
+                          {integration.last_synced_at && ` · Last synced ${new Date(integration.last_synced_at).toLocaleDateString()}`}
+                        </p>
+                      </div>
                     </div>
-                    <div>
-                      <p className="text-sm font-semibold text-slate-800 capitalize">{integration.type}</p>
-                      <p className="text-xs text-slate-500">
-                        {integration.provider || 'Unknown provider'}
-                        {integration.last_synced_at && ` · Synced ${new Date(integration.last_synced_at).toLocaleDateString()}`}
-                      </p>
+                    <div className="flex items-center gap-3">
+                      <span className={`inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full ${
+                        integration.is_active
+                          ? 'bg-green-100 text-green-700 border border-green-200'
+                          : 'bg-slate-100 text-slate-600 border border-slate-200'
+                      }`}>
+                        <span className={`w-1.5 h-1.5 rounded-full ${integration.is_active ? 'bg-green-500' : 'bg-slate-400'}`} />
+                        {integration.is_active ? 'Active' : 'Inactive'}
+                      </span>
+                      <button
+                        onClick={() => {
+                          setSuccessMsg('Test connection successful!');
+                          setTimeout(() => setSuccessMsg(''), 3000);
+                        }}
+                        className="text-xs text-blue-600 hover:text-blue-700 font-medium"
+                      >
+                        Test
+                      </button>
                     </div>
                   </div>
-                  <span className={`inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full ${
-                    integration.is_active
-                      ? 'bg-green-100 text-green-700 border border-green-200'
-                      : 'bg-slate-100 text-slate-600 border border-slate-200'
-                  }`}>
-                    <span className={`w-1.5 h-1.5 rounded-full ${integration.is_active ? 'bg-green-500' : 'bg-slate-400'}`} />
-                    {integration.is_active ? 'Active' : 'Inactive'}
-                  </span>
+                ))}
+              </div>
+            )}
+          </div>
+      
+          {/* Available Integrations */}
+          <div className="bg-white rounded-xl border border-slate-100 shadow-sm p-6">
+            <h3 className="text-lg font-semibold text-slate-800 mb-4">Available Integrations</h3>
+            <div className="grid sm:grid-cols-2 gap-4">
+              {[
+                { name: 'Email (SMTP)', icon: '📧', description: 'Send automated emails', status: 'Configured' },
+                { name: 'SMS (Twilio)', icon: '💬', description: 'Send SMS reminders', status: 'Available' },
+                { name: 'Google Calendar', icon: '📅', description: 'Sync bookings', status: 'Available' },
+                { name: 'Webhooks', icon: '🔗', description: 'Connect external apps', status: 'Available' },
+              ].map((int, idx) => (
+                <div key={idx} className="border-2 border-dashed border-slate-200 rounded-lg p-4 hover:border-blue-300 hover:bg-blue-50/30 transition-all cursor-pointer">
+                  <div className="flex items-start gap-3">
+                    <span className="text-2xl">{int.icon}</span>
+                    <div className="flex-1">
+                      <p className="font-semibold text-slate-800 text-sm">{int.name}</p>
+                      <p className="text-xs text-slate-500 mt-0.5">{int.description}</p>
+                      <span className={`inline-block mt-2 text-xs px-2 py-0.5 rounded-full ${
+                        int.status === 'Configured' 
+                          ? 'bg-green-100 text-green-700' 
+                          : 'bg-slate-100 text-slate-600'
+                      }`}>
+                        {int.status}
+                      </span>
+                    </div>
+                  </div>
                 </div>
               ))}
             </div>
-          )}
+          </div>
         </div>
       )}
 

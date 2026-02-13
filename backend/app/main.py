@@ -467,7 +467,7 @@ def create_contact(
     db: Session = Depends(get_db)
 ):
     """Create new contact"""
-    db_contact = models.Contact(**contact.dict())
+    db_contact = models.Contact(workspace_id=workspace_id, **contact.dict())
     db.add(db_contact)
     db.flush()
     
@@ -519,11 +519,11 @@ def create_contact_form(
     slug = re.sub(r'[^a-z0-9]+', '-', form.name.lower()).strip('-')
     
     db_form = models.ContactForm(
-        workspace_id=workspace_id,
-        name=form.name,
-        slug=slug,
-        fields=form.fields,
-        welcome_message=form.welcome_message
+    workspace_id=workspace_id,
+    name=form.name,
+    slug=slug,
+    fields=[f.dict() for f in form.fields],
+    welcome_message=form.welcome_message
     )
     db.add(db_form)
     db.commit()
@@ -727,11 +727,11 @@ def create_post_booking_form(
 ):
     """Create post-booking form"""
     db_form = models.PostBookingForm(
-        workspace_id=workspace_id,
-        service_type_id=form.service_type_id,
-        name=form.name,
-        description=form.description,
-        fields=form.fields
+    workspace_id=workspace_id,
+    service_type_id=form.service_type_id,
+    name=form.name,
+    description=form.description,
+    fields=[f.dict() for f in form.fields]
     )
     db.add(db_form)
     db.commit()
